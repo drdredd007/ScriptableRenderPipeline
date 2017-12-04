@@ -15,8 +15,6 @@ using UnityEngine.XR;
 [ExecuteInEditMode]
 public class SRP01 : RenderPipelineAsset
 {
-    public bool UseIntermediateRenderTargetBlit;
-
 #if UNITY_EDITOR
     [UnityEditor.MenuItem("Assets/Create/Render Pipeline/SRPFTP/SRP01", priority = CoreUtils.assetCreateMenuPriority1)]
     static void CreateSRP01()
@@ -29,98 +27,35 @@ public class SRP01 : RenderPipelineAsset
 
     protected override IRenderPipeline InternalCreatePipeline()
     {
-        return new SRP01Instance(UseIntermediateRenderTargetBlit);
+        return new SRP01Instance();
     }
 }
 
 public class SRP01Instance : RenderPipeline
 {
-    bool useIntermediateBlit;
-
     public SRP01Instance()
     {
-        useIntermediateBlit = false;
-    }
-
-    public SRP01Instance(bool useIntermediate)
-    {
-        useIntermediateBlit = useIntermediate;
     }
 
     public override void Render(ScriptableRenderContext renderContext, Camera[] cameras)
     {
-        base.Render(renderContext, cameras);
-        SRP01Rendering.Render(renderContext, cameras, useIntermediateBlit);
+        //base.Render(renderContext, cameras);
+        SRP01Rendering.Render(renderContext, cameras);
     }
 }
 
 public static class SRP01Rendering
 {
-    static void ConfigureAndBindIntermediateRenderTarget(ScriptableRenderContext context, Camera cam, bool stereoEnabled, out RenderTargetIdentifier intermediateRTID, out bool isRTTexArray)
-    {
-        var intermediateRT = Shader.PropertyToID("_IntermediateTarget");
-        intermediateRTID = new RenderTargetIdentifier(intermediateRT);
-
-        isRTTexArray = false;
-
-        var bindIntermediateRTCmd = CommandBufferPool.Get("Bind intermediate RT");
-
-        if (stereoEnabled)
-        {
-            RenderTextureDescriptor xrDesc = XRSettings.eyeTextureDesc;
-            xrDesc.depthBufferBits = 24;
-
-            if (xrDesc.dimension == TextureDimension.Tex2DArray)
-                isRTTexArray = true;
-
-            bindIntermediateRTCmd.GetTemporaryRT(intermediateRT, xrDesc, FilterMode.Point);
-        }
-        else
-        {
-            int w = cam.pixelWidth;
-            int h = cam.pixelHeight;
-            bindIntermediateRTCmd.GetTemporaryRT(intermediateRT, w, h, 24, FilterMode.Point, RenderTextureFormat.Default, RenderTextureReadWrite.Default, 1, true);
-        }
-
-        if (isRTTexArray)
-            bindIntermediateRTCmd.SetRenderTarget(intermediateRTID, 0, CubemapFace.Unknown, -1); // depthSlice == -1 => bind all slices
-        else
-            bindIntermediateRTCmd.SetRenderTarget(intermediateRTID);
-
-        context.ExecuteCommandBuffer(bindIntermediateRTCmd);
-        CommandBufferPool.Release(bindIntermediateRTCmd);
-    }
-
-    static void BlitFromIntermediateToCameraTarget(ScriptableRenderContext context, RenderTargetIdentifier intermediateRTID, bool isRTTexArray)
-    {
-        var blitIntermediateRTCmd = CommandBufferPool.Get("Copy intermediate RT to default RT");
-
-        if (isRTTexArray)
-        {
-            // Currently, Blit does not allow specification of a slice in a texture array.
-            // It can use the CurrentActive render texture's bound slices, so we use that
-            // as a temporary workaround.
-            blitIntermediateRTCmd.SetRenderTarget(BuiltinRenderTextureType.CameraTarget, 0, CubemapFace.Unknown, -1);
-            blitIntermediateRTCmd.Blit(intermediateRTID, BuiltinRenderTextureType.CurrentActive);
-        }
-        else
-            blitIntermediateRTCmd.Blit(intermediateRTID, BuiltinRenderTextureType.CameraTarget);
-
-        context.ExecuteCommandBuffer(blitIntermediateRTCmd);
-        CommandBufferPool.Release(blitIntermediateRTCmd);
-
-    }
-
     // Main entry point for our scriptable render loop
-
-    public static void Render(ScriptableRenderContext context, IEnumerable<Camera> cameras, bool useIntermediateBlitPath)
+    public static void Render(ScriptableRenderContext context, IEnumerable<Camera> cameras)
     {
         bool stereoEnabled = XRSettings.isDeviceActive;
 
-        foreach (var camera in cameras)
+        foreach (Camera camera in cameras)
         {
             // Culling
             ScriptableCullingParameters cullingParams;
+
             // Stereo-aware culling parameters are configured to perform a single cull for both eyes
             if (!CullResults.GetCullingParameters(camera, stereoEnabled, out cullingParams))
                 continue;
@@ -134,17 +69,12 @@ public static class SRP01Rendering
 
             // Draws in-between [Start|Stop]MultiEye are stereo-ized by engine
             if (stereoEnabled)
-                context.StartMultiEye(camera);
-
-            RenderTargetIdentifier intermediateRTID = new RenderTargetIdentifier(BuiltinRenderTextureType.CurrentActive);
-            bool isIntermediateRTTexArray = false;
-            if (useIntermediateBlitPath)
             {
-                ConfigureAndBindIntermediateRenderTarget(context, camera, stereoEnabled, out intermediateRTID, out isIntermediateRTTexArray);
+                context.StartMultiEye(camera);
             }
 
             // clear depth buffer
-            var cmd = CommandBufferPool.Get();
+            CommandBuffer cmd = CommandBufferPool.Get();
             cmd.ClearRenderTarget(true, false, Color.black);
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
@@ -152,23 +82,23 @@ public static class SRP01Rendering
             // Setup global lighting shader variables
             SetupLightShaderVariables(cull.visibleLights, context);
 
-            // Draw opaque objects using BasicPass shader pass
-            var drawSettings = new DrawRendererSettings(camera, new ShaderPassName("BasicPass")) { sorting = { flags = SortFlags.CommonOpaque } };
-            var filterSettings = new FilterRenderersSettings(true) { renderQueueRange = RenderQueueRange.opaque };
-            context.DrawRenderers(cull.visibleRenderers, ref drawSettings, filterSettings);
-
             // Draw skybox
             context.DrawSkybox(camera);
+
+            // Setup DrawSettings and FilterSettings
+            ShaderPassName passName = new ShaderPassName("BasicPass");
+            DrawRendererSettings drawSettings = new DrawRendererSettings(camera, passName);
+            FilterRenderersSettings filterSettings = new FilterRenderersSettings(true);
+
+            // Draw opaque objects using BasicPass shader pass
+            drawSettings.sorting.flags = SortFlags.CommonOpaque;
+            filterSettings.renderQueueRange = RenderQueueRange.opaque;
+            context.DrawRenderers(cull.visibleRenderers, ref drawSettings, filterSettings);
 
             // Draw transparent objects using BasicPass shader pass
             drawSettings.sorting.flags = SortFlags.CommonTransparent;
             filterSettings.renderQueueRange = RenderQueueRange.transparent;
             context.DrawRenderers(cull.visibleRenderers, ref drawSettings, filterSettings);
-
-            if (useIntermediateBlitPath)
-            {
-                BlitFromIntermediateToCameraTarget(context, intermediateRTID, isIntermediateRTTexArray);
-            }
 
             if (stereoEnabled)
             {
@@ -183,7 +113,6 @@ public static class SRP01Rendering
     }
 
     // Setup lighting variables for shader to use
-
     private static void SetupLightShaderVariables(List<VisibleLight> lights, ScriptableRenderContext context)
     {
         // We only support up to 8 visible lights here. More complex approaches would
@@ -200,20 +129,20 @@ public static class SRP01Rendering
         Vector4[] lightPositions = new Vector4[kMaxLights];
         Vector4[] lightSpotDirections = new Vector4[kMaxLights];
         Vector4[] lightAtten = new Vector4[kMaxLights];
-        for (var i = 0; i < lightCount; ++i)
+        for (int i = 0; i < lightCount; ++i)
         {
             VisibleLight light = lights[i];
             lightColors[i] = light.finalColor;
             if (light.lightType == LightType.Directional)
             {
                 // light position for directional lights is: (-direction, 0)
-                var dir = light.localToWorld.GetColumn(2);
+                Vector4 dir = light.localToWorld.GetColumn(2);
                 lightPositions[i] = new Vector4(-dir.x, -dir.y, -dir.z, 0);
             }
             else
             {
                 // light position for point/spot lights is: (position, 1)
-                var pos = light.localToWorld.GetColumn(3);
+                Vector4 pos = light.localToWorld.GetColumn(3);
                 lightPositions[i] = new Vector4(pos.x, pos.y, pos.z, 1);
             }
             // attenuation set in a way where distance attenuation can be computed:
@@ -269,7 +198,6 @@ public static class SRP01Rendering
     }
 
     // Prepare L2 spherical harmonics values for efficient evaluation in a shader
-
     private static void GetShaderConstantsFromNormalizedSH(ref SphericalHarmonicsL2 ambientProbe, Vector4[] outCoefficients)
     {
         for (int channelIdx = 0; channelIdx < 3; ++channelIdx)
