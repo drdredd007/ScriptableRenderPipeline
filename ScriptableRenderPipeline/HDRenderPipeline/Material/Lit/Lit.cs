@@ -129,7 +129,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             [SurfaceDataAttributes("", true)]
             public Vector3 normalWS;
             public float perceptualRoughness;
-            public float roughness;
             public int materialId;
 
             // MaterialId dependent attribute
@@ -150,7 +149,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             public float   thickness;
             public int     subsurfaceProfile;
             public bool    enableTransmission; // Read from the SSS profile
-            public bool    useThinObjectMode;  // Read from the SSS profile
+            public bool    useThickObjectMode; // Read from the SSS profile
             public Vector3 transmittance;
 
             // SpecColor
