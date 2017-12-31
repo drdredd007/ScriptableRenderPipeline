@@ -8,10 +8,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5e469a3940522734586cdfb1cf649d7f, type: 3}
-  m_Name: SRP04
+  m_Script: {fileID: 11500000, guid: b0058b250a2772547b3127a5b5969761, type: 3}
+  m_Name: SRP07
   m_EditorClassIdentifier: 
-  ClearColor: {r: 1, g: 0, b: 0, a: 1}
-  DrawSkybox: 1
+  ClearColor: {r: 0.20810658, g: 0.41509432, b: 0.1977572, a: 1}
+  DrawSkybox: 0
   DrawOpaque: 1
   DrawTransparent: 1
