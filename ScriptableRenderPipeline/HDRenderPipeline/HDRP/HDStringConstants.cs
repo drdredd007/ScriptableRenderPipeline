@@ -138,7 +138,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         public static readonly int _SkyTexture = Shader.PropertyToID("_SkyTexture");
         public static readonly int _SkyTextureMipCount = Shader.PropertyToID("_SkyTextureMipCount");
 
-        public static readonly int _UseDisneySSS = Shader.PropertyToID("_UseDisneySSS");
         public static readonly int _EnableSSSAndTransmission = Shader.PropertyToID("_EnableSSSAndTransmission");
         public static readonly int _TexturingModeFlags = Shader.PropertyToID("_TexturingModeFlags");
         public static readonly int _TransmissionFlags = Shader.PropertyToID("_TransmissionFlags");
@@ -198,6 +197,8 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         public static readonly int _CameraSssDiffuseLightingBuffer = Shader.PropertyToID("_CameraSssDiffuseLightingTexture");
         public static readonly int _CameraFilteringBuffer          = Shader.PropertyToID("_CameraFilteringTexture");
         public static readonly int _IrradianceSource               = Shader.PropertyToID("_IrradianceSource");
+
+        public static readonly int _EnableDBuffer = Shader.PropertyToID("_EnableDBuffer");
 
         public static readonly int[] _GBufferTexture =
         {
