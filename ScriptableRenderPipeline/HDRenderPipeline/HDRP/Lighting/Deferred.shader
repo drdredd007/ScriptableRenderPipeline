@@ -3,11 +3,12 @@ Shader "Hidden/HDRenderPipeline/Deferred"
     Properties
     {
         // We need to be able to control the blend mode for deferred shader in case we do multiple pass
-        _SrcBlend("", Float) = 1
-        _DstBlend("", Float) = 1
+        [HideInInspector] _SrcBlend("", Float) = 1
+        [HideInInspector] _DstBlend("", Float) = 1
 
-        _StencilRef("", Int) = 0
-        _StencilCmp("", Int) = 3
+        [HideInInspector] _StencilMask("_StencilMask", Int) = 7
+        [HideInInspector] _StencilRef("", Int) = 0
+        [HideInInspector] _StencilCmp("", Int) = 3
     }
 
     SubShader
@@ -16,6 +17,7 @@ Shader "Hidden/HDRenderPipeline/Deferred"
         {
             Stencil
             {
+                ReadMask[_StencilMask]
                 Ref  [_StencilRef]
                 Comp [_StencilCmp]
                 Pass Keep
@@ -61,9 +63,9 @@ Shader "Hidden/HDRenderPipeline/Deferred"
             // variable declaration
             //-------------------------------------------------------------------------------------
 
-            #ifdef SHADOWS_SHADOWMASK
+        #ifdef SHADOWS_SHADOWMASK
             TEXTURE2D(_ShadowMaskTexture);
-            #endif
+        #endif
 
             struct Attributes
             {
@@ -118,7 +120,7 @@ Shader "Hidden/HDRenderPipeline/Deferred"
                 Outputs outputs;
 
             #ifdef OUTPUT_SPLIT_LIGHTING
-                if (_EnableSSSAndTransmission != 0 && bsdfData.materialId == MATERIALID_LIT_SSS)
+                if (_EnableSubsurfaceScattering != 0 && HaveSubsurfaceScattering(bsdfData))
                 {
                     outputs.specularLighting = float4(specularLighting, 1.0);
                     outputs.diffuseLighting  = TagLightingForSSS(diffuseLighting);

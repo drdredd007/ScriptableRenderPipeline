@@ -76,11 +76,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 newAsset.deferredComputeShader = Load<ComputeShader>(HDRenderPipelinePath + "Lighting/LightLoop/Deferred.compute");
 
                 newAsset.deferredDirectionalShadowComputeShader = Load<ComputeShader>(HDRenderPipelinePath + "Lighting/DeferredDirectionalShadow.compute");
-
-                // SubsurfaceScattering
-                // These shaders don't need to be reference by RenderPipelineResource as they are not use at runtime (only to draw in editor)
-                // instance.drawSssProfile = UnityEditor.AssetDatabase.LoadAssetAtPath<Shader>(HDRenderPipelinePath + "SceneSettings/DrawSssProfile.shader");
-                // instance.drawTransmittanceGraphShader = UnityEditor.AssetDatabase.LoadAssetAtPath<Shader>(HDRenderPipelinePath + "SceneSettings/DrawTransmittanceGraph.shader");
+                newAsset.volumetricLightingCS = Load<ComputeShader>(HDRenderPipelinePath + "Lighting/Volumetrics/Resources/VolumetricLighting.compute");
 
                 newAsset.subsurfaceScatteringCS = Load<ComputeShader>(HDRenderPipelinePath + "Material/SubsurfaceScattering/SubsurfaceScattering.compute");
                 newAsset.subsurfaceScattering = Load<Shader>(HDRenderPipelinePath + "Material/SubsurfaceScattering/SubsurfaceScattering.shader");

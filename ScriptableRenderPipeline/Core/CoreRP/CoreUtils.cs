@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.Rendering;
@@ -49,6 +49,7 @@ namespace UnityEngine.Experimental.Rendering
         public const int editMenuPriority2 = 331;
         public const int assetCreateMenuPriority1 = 230;
         public const int assetCreateMenuPriority2 = 241;
+        public const int gameObjectMenuPriority = 10;
 
         static Cubemap m_BlackCubeTexture;
         public static Cubemap blackCubeTexture
@@ -163,16 +164,21 @@ namespace UnityEngine.Experimental.Rendering
         }
 
         public static void CreateCmdTemporaryRT(CommandBuffer cmd, int nameID, RenderTextureDescriptor baseDesc,
-                                                int depthBufferBits, FilterMode filter, RenderTextureFormat format,
-                                                RenderTextureReadWrite readWrite = RenderTextureReadWrite.Default, int msaaSamples = 1, bool enableRandomWrite = false)
+            int depthBufferBits, FilterMode filter, RenderTextureFormat format,
+            RenderTextureReadWrite readWrite = RenderTextureReadWrite.Default, int msaaSamples = 1, bool enableRandomWrite = false)
+        {
+            UpdateRenderTextureDescriptor(ref baseDesc, depthBufferBits, format, readWrite, msaaSamples, enableRandomWrite);
+
+            cmd.GetTemporaryRT(nameID, baseDesc, filter);
+        }
+
+        public static void UpdateRenderTextureDescriptor(ref RenderTextureDescriptor baseDesc, int depthBufferBits, RenderTextureFormat format, RenderTextureReadWrite readWrite, int msaaSamples, bool enableRandomWrite)
         {
             baseDesc.depthBufferBits = depthBufferBits;
             baseDesc.colorFormat = format;
             baseDesc.sRGB = (readWrite != RenderTextureReadWrite.Linear);
             baseDesc.msaaSamples = msaaSamples;
             baseDesc.enableRandomWrite = enableRandomWrite;
-
-            cmd.GetTemporaryRT(nameID, baseDesc, filter);
         }
 
         public static void ClearCubemap(CommandBuffer cmd, RenderTargetIdentifier buffer, Color clearColor)
@@ -395,7 +401,7 @@ namespace UnityEngine.Experimental.Rendering
 
         public static void QuickSort(uint[] arr, int left, int right)
         {
-            // For Recusrion
+            // For Recursion
             if (left < right)
             {
                 int pivot = Partition(arr, left, right);
@@ -408,20 +414,20 @@ namespace UnityEngine.Experimental.Rendering
             }
         }
 
-        public static Mesh CreateDecalMesh()
+        public static Mesh CreateCubeMesh(Vector3 min, Vector3 max)
         {
             Mesh mesh = new Mesh();
 
             Vector3[] vertices = new Vector3[8];
 
-            vertices[0] = new Vector3(-0.5f, -1.0f, -0.5f);
-            vertices[1] = new Vector3(0.5f, -1.0f, -0.5f);
-            vertices[2] = new Vector3(0.5f, 0.0f, -0.5f);
-            vertices[3] = new Vector3(-0.5f, 0.0f, -0.5f);
-            vertices[4] = new Vector3(-0.5f, -1.0f, 0.5f);
-            vertices[5] = new Vector3(0.5f, -1.0f, 0.5f);
-            vertices[6] = new Vector3(0.5f, 0.0f, 0.5f);
-            vertices[7] = new Vector3(-0.5f, 0.0f, 0.5f);
+            vertices[0] = new Vector3(min.x, min.y, min.z);
+            vertices[1] = new Vector3(max.x, min.y, min.z);
+            vertices[2] = new Vector3(max.x, max.y, min.z);
+            vertices[3] = new Vector3(min.x, max.y, min.z);
+            vertices[4] = new Vector3(min.x, min.y, max.z);
+            vertices[5] = new Vector3(max.x, min.y, max.z);
+            vertices[6] = new Vector3(max.x, max.y, max.z);
+            vertices[7] = new Vector3(min.x, max.y, max.z);
 
             mesh.vertices = vertices;
 
@@ -442,19 +448,6 @@ namespace UnityEngine.Experimental.Rendering
 
             mesh.triangles = triangles;
             return mesh;
-        }
-
-        public static BoundingSphere GetDecalMeshBoundingSphere(Matrix4x4 decalToWorld)
-        {
-
-            Vector4 min = new Vector4(-0.5f, -1.0f, -0.5f, 1.0f);
-            Vector4 max = new Vector4(0.5f, 0.0f, 0.5f, 1.0f);
-            min = decalToWorld * min;
-            max = decalToWorld * max;
-            BoundingSphere res = new BoundingSphere();
-            res.position = (max + min) / 2;
-            res.radius = ((Vector3)(max - min)).magnitude / 2;
-            return res;
         }
     }
 }

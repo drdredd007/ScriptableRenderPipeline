@@ -286,7 +286,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             public List<LightData> lights;
             public List<EnvLightData> envLights;
             public List<ShadowData> shadows;
-            public Vector4[] directionalShadowSplitSphereSqr;
 
             public List<SFiniteLightBound> bounds;
             public List<LightVolumeData> lightVolumes;
@@ -308,7 +307,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 lights = new List<LightData>();
                 envLights = new List<EnvLightData>();
                 shadows = new List<ShadowData>();
-                directionalShadowSplitSphereSqr = new Vector4[k_MaxCascadeCount];
 
                 bounds = new List<SFiniteLightBound>();
                 lightVolumes = new List<LightVolumeData>();
@@ -522,6 +520,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                             CoreUtils.SetKeyword(m_deferredLightingMaterial[index], "SHADOWS_SHADOWMASK", shadowMask == 1);
                             CoreUtils.SetKeyword(m_deferredLightingMaterial[index], "DEBUG_DISPLAY", debugDisplay == 1);
 
+                            m_deferredLightingMaterial[index].SetInt(HDShaderIDs._StencilMask, (int)HDRenderPipeline.StencilBitMask.LightingMask);
                             m_deferredLightingMaterial[index].SetInt(HDShaderIDs._StencilRef, outputSplitLighting == 1 ? (int)StencilLightingUsage.SplitLighting : (int)StencilLightingUsage.RegularLighting);
                             m_deferredLightingMaterial[index].SetInt(HDShaderIDs._StencilCmp, (int)CompareFunction.Equal);
                             m_deferredLightingMaterial[index].SetInt(HDShaderIDs._SrcBlend, (int)BlendMode.One);
@@ -1913,7 +1912,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 cmd.SetGlobalBuffer(HDShaderIDs._EnvLightDatas, s_EnvLightDatas);
                 cmd.SetGlobalInt(HDShaderIDs._EnvLightCount, m_lightList.envLights.Count);
                 cmd.SetGlobalBuffer(HDShaderIDs._ShadowDatas, s_shadowDatas);
-                cmd.SetGlobalVectorArray(HDShaderIDs._DirShadowSplitSpheres, m_lightList.directionalShadowSplitSphereSqr);
 
                 cmd.SetGlobalInt(HDShaderIDs._NumTileFtplX, GetNumTileFtplX(camera));
                 cmd.SetGlobalInt(HDShaderIDs._NumTileFtplY, GetNumTileFtplY(camera));
@@ -1938,6 +1936,9 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                     {
                         cmd.SetGlobalBuffer(HDShaderIDs.g_logBaseBuffer, s_PerTileLogBaseTweak);
                     }
+
+                    // Set up clustered lighting for volumetrics.
+                    cmd.SetGlobalBuffer(HDShaderIDs.g_vLightListGlobal, s_PerVoxelLightLists);
                 }
             }
         }
@@ -2089,7 +2090,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                     {
                         // If SSS is disable, do lighting for both split lighting and no split lighting
                         // This is for debug purpose, so fine to use immediate material mode here to modify render state
-                        if (!m_FrameSettings.enableSSSAndTransmission)
+                        if (!m_FrameSettings.enableSubsurfaceScattering)
                         {
                             currentLightingMaterial.SetInt(HDShaderIDs._StencilRef, (int)StencilLightingUsage.NoLighting);
                             currentLightingMaterial.SetInt(HDShaderIDs._StencilCmp, (int)CompareFunction.NotEqual);

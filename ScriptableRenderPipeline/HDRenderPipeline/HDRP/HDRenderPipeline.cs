@@ -149,24 +149,29 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
         readonly HDRenderPipelineAsset m_Asset;
 
-        SubsurfaceScatteringSettings m_InternalSSSAsset;
-        public SubsurfaceScatteringSettings sssSettings
+        DiffusionProfileSettings m_InternalSSSAsset;
+        public DiffusionProfileSettings diffusionProfileSettings
         {
             get
             {
                 // If no SSS asset is set, build / reuse an internal one for simplicity
-                var asset = m_Asset.sssSettings;
+                var asset = m_Asset.diffusionProfileSettings;
 
                 if (asset == null)
                 {
                     if (m_InternalSSSAsset == null)
-                        m_InternalSSSAsset = ScriptableObject.CreateInstance<SubsurfaceScatteringSettings>();
+                        m_InternalSSSAsset = ScriptableObject.CreateInstance<DiffusionProfileSettings>();
 
                     asset = m_InternalSSSAsset;
                 }
 
                 return asset;
             }
+        }
+
+        public bool IsInternalDiffusionProfile(DiffusionProfileSettings profile)
+        {
+            return m_InternalSSSAsset == profile;
         }
 
         readonly RenderPipelineMaterial m_DeferredMaterial;
@@ -268,10 +273,10 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         [Flags]
         public enum StencilBitMask
         {
-            Clear    = 0,                    // 0x0
-            Lighting = 7,                    // 0x7  - 3 bit
-            ObjectVelocity = 128,            // 1 bit
-            All      = 255                   // 0xFF - 8 bit
+            Clear          = 0,              // 0x0
+            LightingMask   = 7,              // 0x7  - 3 bit
+            ObjectVelocity = 128,            // 0x80 - 1 bit
+            All            = 255             // 0xFF - 8 bit
         }
 
         RenderStateBlock m_DepthStateOpaque;
@@ -308,6 +313,8 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         }
         public HDRenderPipeline(HDRenderPipelineAsset asset)
         {
+            SetRenderingFeatures();
+
             m_Asset = asset;
             m_GPUCopy = new GPUCopy(asset.renderPipelineResources.copyChannelCS);
             EncodeBC6H.DefaultInstance = EncodeBC6H.DefaultInstance ?? new EncodeBC6H(asset.renderPipelineResources.encodeBC6HCS);
@@ -340,6 +347,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             // General material
             m_CopyStencilForNoLighting = CoreUtils.CreateEngineMaterial(asset.renderPipelineResources.copyStencilBuffer);
             m_CopyStencilForNoLighting.SetInt(HDShaderIDs._StencilRef, (int)StencilLightingUsage.NoLighting);
+            m_CopyStencilForNoLighting.SetInt(HDShaderIDs._StencilMask, (int)StencilBitMask.LightingMask);
             m_CameraMotionVectorsMaterial = CoreUtils.CreateEngineMaterial(asset.renderPipelineResources.cameraMotionVectors);
 
             InitializeDebugMaterials();
@@ -391,6 +399,26 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             }
 
             InitializeRenderStateBlocks();
+        }
+
+        void SetRenderingFeatures()
+        {
+            // HD use specific GraphicsSettings
+            GraphicsSettings.lightsUseLinearIntensity = true;
+            GraphicsSettings.lightsUseColorTemperature = true;
+
+            SupportedRenderingFeatures.active = new SupportedRenderingFeatures()
+            {
+                reflectionProbeSupportFlags = SupportedRenderingFeatures.ReflectionProbeSupportFlags.Rotation,
+                defaultMixedLightingMode = SupportedRenderingFeatures.LightmapMixedBakeMode.IndirectOnly,
+                supportedMixedLightingModes = SupportedRenderingFeatures.LightmapMixedBakeMode.IndirectOnly | SupportedRenderingFeatures.LightmapMixedBakeMode.Shadowmask,
+                supportedLightmapBakeTypes = LightmapBakeType.Baked | LightmapBakeType.Mixed | LightmapBakeType.Realtime,
+                supportedLightmapsModes = LightmapsMode.NonDirectional | LightmapsMode.CombinedDirectional,
+                rendererSupportsLightProbeProxyVolumes = true,
+                rendererSupportsMotionVectors = true,
+                rendererSupportsReceiveShadows = true,
+                rendererSupportsReflectionProbes = true
+            };
         }
 
         void InitializeDebugMaterials()
@@ -446,25 +474,8 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             m_SSSBufferManager.Cleanup();
             m_SkyManager.Cleanup();
 
-#if UNITY_EDITOR
             SupportedRenderingFeatures.active = new SupportedRenderingFeatures();
-#endif
         }
-
-#if UNITY_EDITOR
-        static readonly SupportedRenderingFeatures s_NeededFeatures = new SupportedRenderingFeatures()
-        {
-            reflectionProbeSupportFlags = SupportedRenderingFeatures.ReflectionProbeSupportFlags.Rotation,
-            defaultMixedLightingMode = SupportedRenderingFeatures.LightmapMixedBakeMode.IndirectOnly,
-            supportedMixedLightingModes = SupportedRenderingFeatures.LightmapMixedBakeMode.IndirectOnly | SupportedRenderingFeatures.LightmapMixedBakeMode.Shadowmask,
-            supportedLightmapBakeTypes = LightmapBakeType.Baked | LightmapBakeType.Mixed | LightmapBakeType.Realtime,
-            supportedLightmapsModes = LightmapsMode.NonDirectional | LightmapsMode.CombinedDirectional,
-            rendererSupportsLightProbeProxyVolumes = true,
-            rendererSupportsMotionVectors = true,
-            rendererSupportsReceiveShadows = true,
-            rendererSupportsReflectionProbes = true
-        };
-#endif
 
         void CreateDepthStencilBuffer(HDCamera hdCamera)
         {
@@ -526,12 +537,18 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 m_LightLoop.AllocResolutionDependentBuffers(texWidth, texHeight);
             }
 
+            int viewId = hdCamera.camera.GetInstanceID(); // Warning: different views can use the same camera
+
+            // Warning: (resolutionChanged == false) if you open a new Editor tab of the same size!
+            if (m_VolumetricLightingPreset != VolumetricLightingPreset.Off)
+                ResizeVBuffer(viewId, texWidth, texHeight);
+
             // update recorded window resolution
             m_CurrentWidth = texWidth;
             m_CurrentHeight = texHeight;
         }
 
-        public void PushGlobalParams(HDCamera hdCamera, CommandBuffer cmd, SubsurfaceScatteringSettings sssParameters)
+        public void PushGlobalParams(HDCamera hdCamera, CommandBuffer cmd, DiffusionProfileSettings sssParameters)
         {
             using (new ProfilingSample(cmd, "Push Global Parameters", GetSampler(CustomSamplerId.PushGlobalParameters)))
             {
@@ -540,6 +557,11 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 m_SSSBufferManager.PushGlobalParams(cmd, sssParameters, m_FrameSettings);
 
                 m_DbufferManager.PushGlobalParams(cmd);
+
+                if (m_VolumetricLightingPreset != VolumetricLightingPreset.Off)
+                {
+                    SetVolumetricLightingData(hdCamera, cmd);
+                }
             }
         }
 
@@ -600,14 +622,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         public override void Render(ScriptableRenderContext renderContext, Camera[] cameras)
         {
             base.Render(renderContext, cameras);
-
-#if UNITY_EDITOR
-            SupportedRenderingFeatures.active = s_NeededFeatures;
-#endif
-            // HD use specific GraphicsSettings. This is init here.
-            // TODO: This should not be set at each Frame but is there another place for these config setup ?
-            GraphicsSettings.lightsUseLinearIntensity = true;
-            GraphicsSettings.lightsUseColorTemperature = true;
 
             if (m_FrameCount != Time.frameCount)
             {
@@ -716,7 +730,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
                     renderContext.SetupCameraProperties(camera);
 
-                    PushGlobalParams(hdCamera, cmd, sssSettings);
+                    PushGlobalParams(hdCamera, cmd, diffusionProfileSettings);
 
                     // TODO: Find a correct place to bind these material textures
                     // We have to bind the material specific global parameters in this mode
@@ -826,7 +840,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                                 // In the material classification shader we will simply test is we are no lighting
                                 // Use ShaderPassID 1 => "Pass 1 - Write 1 if value different from stencilRef to output"
                                 CoreUtils.DrawFullScreen(cmd, m_CopyStencilForNoLighting, m_CameraStencilBufferCopyRT, m_CameraDepthStencilBufferRT, null, 1);
-                                cmd.ClearRandomWriteTargets();
                             }
                         }
 
@@ -842,13 +855,17 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                             }
                         }
 
+                        // Render the volumetric lighting.
+                        // The pass requires the volume properties, the light list and the shadows, and can run async.
+                        VolumetricLightingPass(hdCamera, cmd);
+
                         RenderDeferredLighting(hdCamera, cmd);
 
                         RenderForward(m_CullResults, hdCamera, renderContext, cmd, ForwardPass.Opaque);
                         RenderForwardError(m_CullResults, camera, renderContext, cmd, ForwardPass.Opaque);
 
                         // SSS pass here handle both SSS material from deferred and forward
-                        m_SSSBufferManager.SubsurfaceScatteringPass(hdCamera, cmd, sssSettings, m_FrameSettings,
+                        m_SSSBufferManager.SubsurfaceScatteringPass(hdCamera, cmd, diffusionProfileSettings, m_FrameSettings,
                                                                     m_CameraColorBufferRT, m_CameraSssDiffuseLightingBufferRT, m_CameraDepthStencilBufferRT, GetDepthTexture());
 
                         RenderSky(hdCamera, cmd);
@@ -1054,7 +1071,6 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 cmd.SetComputeTextureParam(m_applyDistortionCS, m_applyDistortionKernel, HDShaderIDs._DistortionTexture, m_DistortionBufferRT);
                 cmd.SetComputeTextureParam(m_applyDistortionCS, m_applyDistortionKernel, HDShaderIDs._GaussianPyramidColorTexture, m_GaussianPyramidColorBufferRT);
                 cmd.SetComputeTextureParam(m_applyDistortionCS, m_applyDistortionKernel, HDShaderIDs._CameraColorTexture, m_CameraColorBufferRT);
-                cmd.SetComputeTextureParam(m_applyDistortionCS, m_applyDistortionKernel, HDShaderIDs._DepthTexture, GetDepthTexture());
                 cmd.SetComputeVectorParam(m_applyDistortionCS, HDShaderIDs._Size, size);
                 cmd.SetComputeVectorParam(m_applyDistortionCS, HDShaderIDs._ZBufferParams, Shader.GetGlobalVector(HDShaderIDs._ZBufferParams));
                 cmd.SetComputeVectorParam(m_applyDistortionCS, HDShaderIDs._GaussianPyramidColorMipSize, Shader.GetGlobalVector(HDShaderIDs._GaussianPyramidColorMipSize));
@@ -1241,7 +1257,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
             var options = new LightLoop.LightingPassOptions();
 
-            if (m_FrameSettings.enableSSSAndTransmission)
+            if (m_FrameSettings.enableSubsurfaceScattering)
             {
                 // Output split lighting for materials asking for it (masked in the stencil buffer)
                 options.outputSplitLighting = true;
@@ -1267,7 +1283,8 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             visualEnv.PushFogShaderParameters(cmd, m_FrameSettings);
 
             m_SkyManager.RenderSky(hdCamera, m_LightLoop.GetCurrentSunLight(), m_CameraColorBufferRT, m_CameraDepthStencilBufferRT, cmd);
-            if (visualEnv.fogType != FogType.None)
+
+            if (visualEnv.fogType != FogType.None || m_VolumetricLightingPreset != VolumetricLightingPreset.Off)
                 m_SkyManager.RenderOpaqueAtmosphericScattering(cmd);
         }
 
@@ -1305,7 +1322,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 if (pass == ForwardPass.Opaque)
                 {
                     // In case of forward SSS we will bind all the required target. It is up to the shader to write into it or not.
-                    if (m_FrameSettings.enableSSSAndTransmission)
+                    if (m_FrameSettings.enableSubsurfaceScattering)
                     {
                         RenderTargetIdentifier[] m_MRTWithSSS = new RenderTargetIdentifier[2 + m_SSSBufferManager.sssBufferCount];
                         m_MRTWithSSS[0] = m_CameraColorBufferRT; // Store the specular color
